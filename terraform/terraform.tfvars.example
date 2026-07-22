@@ -1,11 +1,11 @@
-project_id       = "gcp-project-03803aec-3f89-45cb-896"
+project_id       = "GCP_PROJECT_ID"
 region           = "asia-south1"
 zone             = "asia-south1-a"
 machine_type     = "e2-micro"
-ssh_user         = "rohit"
+ssh_user         = "USER_NAME"
 
 # Replace with your own current public IP.
-ssh_source_cidr  = "160.202.36.52/32"
+ssh_source_cidr  = "ID_SIDER"
 
 # Never commit terraform.tfvars.
 # Percent-encode reserved characters in the username/password.
