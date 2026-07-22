@@ -1,0 +1,10 @@
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+terraform/gcp-user-app-key
+terraform/gcp-user-app-key.pub
+app/.env
+__pycache__/
+*.pyc

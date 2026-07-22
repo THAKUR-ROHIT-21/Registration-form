@@ -1,0 +1,13 @@
+project_id       = "gcp-project-03803aec-3f89-45cb-896"
+region           = "asia-south1"
+zone             = "asia-south1-a"
+machine_type     = "e2-micro"
+ssh_user         = "rohit"
+
+# Replace with your own current public IP.
+ssh_source_cidr  = "160.202.36.52/32"
+
+# Never commit terraform.tfvars.
+# Percent-encode reserved characters in the username/password.
+mongodb_uri      = "mongodb+srv://USERNAME:ENCODED_PASSWORD@cluster1.example.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1"
+mongodb_database = "user_registration"
