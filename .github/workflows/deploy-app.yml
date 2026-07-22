@@ -20,44 +20,57 @@ jobs:
     env:
       GCP_HOST: ${{ secrets.GCP_HOST }}
       GCP_USER: ${{ secrets.GCP_USER }}
-      GCP_SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
+      GCP_SSH_KEY_B64: ${{ secrets.GCP_SSH_KEY_B64 }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup SSH
+        shell: bash
         run: |
-          if [ -z "$GCP_SSH_KEY" ]; then
-            echo "ERROR: GCP_SSH_KEY secret is empty"
+          set -e
+
+          if [ -z "$GCP_SSH_KEY_B64" ]; then
+            echo "ERROR: GCP_SSH_KEY_B64 secret is empty"
             exit 1
           fi
 
-          mkdir -p ~/.ssh
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
 
-          printf '%s\n' "$GCP_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s' "$GCP_SSH_KEY_B64" \
+            | base64 --decode \
+            > "$HOME/.ssh/id_ed25519"
 
-          chmod 700 ~/.ssh
-          chmod 600 ~/.ssh/id_ed25519
+          chmod 600 "$HOME/.ssh/id_ed25519"
 
-          ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null
+          ssh-keygen -y \
+            -f "$HOME/.ssh/id_ed25519" \
+            > /dev/null
 
           echo "SSH private key configured successfully"
 
       - name: Add VM to known_hosts
+        shell: bash
         run: |
+          set -e
+
           if [ -z "$GCP_HOST" ]; then
             echo "ERROR: GCP_HOST secret is empty"
             exit 1
           fi
 
-          ssh-keyscan -H "$GCP_HOST" >> ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/known_hosts
+          ssh-keyscan -H "$GCP_HOST" \
+            >> "$HOME/.ssh/known_hosts"
 
-          echo "VM added to known_hosts successfully"
+          chmod 600 "$HOME/.ssh/known_hosts"
 
       - name: Test SSH Connection
+        shell: bash
         run: |
+          set -e
+
           if [ -z "$GCP_USER" ]; then
             echo "ERROR: GCP_USER secret is empty"
             exit 1
@@ -67,53 +80,58 @@ jobs:
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             -o ConnectTimeout=20 \
-            -i ~/.ssh/id_ed25519 \
+            -i "$HOME/.ssh/id_ed25519" \
             "$GCP_USER@$GCP_HOST" \
-            "echo 'SSH connection successful' && hostname && whoami"
+            "echo 'SSH connection successful'; hostname; whoami"
 
       - name: Deploy Docker App
+        shell: bash
         run: |
+          set -e
+
           ssh \
             -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
-            -i ~/.ssh/id_ed25519 \
+            -o ConnectTimeout=20 \
+            -i "$HOME/.ssh/id_ed25519" \
             "$GCP_USER@$GCP_HOST" << 'EOF'
               set -e
 
               APP_DIR="/home/rohit/gcp-user-registration-atlas"
 
               if [ ! -d "$APP_DIR/.git" ]; then
-                echo "ERROR: Application repository not found at $APP_DIR"
+                echo "ERROR: Repository not found at $APP_DIR"
                 exit 1
               fi
 
               cd "$APP_DIR"
 
-              echo "Fetching latest code..."
+              echo "Updating application code..."
               git fetch origin
               git reset --hard origin/main
 
               cd app
 
-              echo "Building and starting Docker containers..."
+              echo "Building Docker containers..."
               docker compose up -d --build
 
-              echo "Current container status:"
+              echo "Container status:"
               docker compose ps
 
-              echo "Removing unused Docker images..."
+              echo "Removing unused images..."
               docker image prune -f
 
-              echo "Waiting for application startup..."
+              echo "Waiting for application..."
               sleep 15
 
               echo "Running health check..."
-              curl --fail \
-                   --silent \
-                   --show-error \
-                   --retry 5 \
-                   --retry-delay 5 \
-                   http://127.0.0.1/api/health
+              curl \
+                --fail \
+                --silent \
+                --show-error \
+                --retry 5 \
+                --retry-delay 5 \
+                http://127.0.0.1/api/health
 
               echo
               echo "Deployment completed successfully"
