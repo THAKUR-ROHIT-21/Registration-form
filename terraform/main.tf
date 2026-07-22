@@ -116,7 +116,7 @@ resource "google_compute_instance" "app_vm" {
 
 resource "null_resource" "deploy_app" {
   triggers = {
-    vm_id        = google_compute_instance.app_vm.instance_id
+    vm_id = google_compute_instance.app_vm.instance_id
     app_checksum = sha256(join("", [
       for f in fileset("${path.module}/../app", "**") :
       filesha256("${path.module}/../app/${f}")
@@ -145,7 +145,7 @@ resource "null_resource" "deploy_app" {
   }
 
   provisioner "file" {
-    content = <<-ENV
+    content     = <<-ENV
       MONGODB_URI=${var.mongodb_uri}
       MONGODB_DB=${var.mongodb_database}
     ENV
