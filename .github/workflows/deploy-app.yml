@@ -1,0 +1,51 @@
+name: Deploy App to GCP VM
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Add VM to known_hosts
+        run: |
+          ssh-keyscan -H ${{ secrets.GCP_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Docker App
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} << 'EOF'
+
+            cd /home/rohit/gcp-user-registration-atlas
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            cd app
+
+            docker compose up -d --build
+
+            sleep 15
+
+            curl -f http://127.0.0.1/api/health
+
+            docker image prune -f
+
+            echo "Deployment successful"
+
+          EOF
