@@ -17,13 +17,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      GCP_HOST: ${{ secrets.GCP_HOST }}
+      GCP_USER: ${{ secrets.GCP_USER }}
+      GCP_SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup SSH
-        env:
-          GCP_SSH_KEY: ${{ secrets.GCP_SSH_KEY }}
         run: |
           if [ -z "$GCP_SSH_KEY" ]; then
             echo "ERROR: GCP_SSH_KEY secret is empty"
@@ -31,60 +34,87 @@ jobs:
           fi
 
           mkdir -p ~/.ssh
-          printf '%s\n' "$GCP_SSH_KEY" > ~/.ssh/id_rsa
+
+          printf '%s\n' "$GCP_SSH_KEY" > ~/.ssh/id_ed25519
 
           chmod 700 ~/.ssh
-          chmod 600 ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_ed25519
+
+          ssh-keygen -y -f ~/.ssh/id_ed25519 > /dev/null
+
+          echo "SSH private key configured successfully"
 
       - name: Add VM to known_hosts
-        env:
-          GCP_HOST: ${{ secrets.GCP_HOST }}
         run: |
           if [ -z "$GCP_HOST" ]; then
-            echo "ERROR: GCP_HOST secret is empty or not configured"
+            echo "ERROR: GCP_HOST secret is empty"
             exit 1
           fi
 
-          ssh-keyscan -T 15 -H "$GCP_HOST" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$GCP_HOST" >> ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
+          echo "VM added to known_hosts successfully"
+
       - name: Test SSH Connection
-        env:
-          GCP_HOST: ${{ secrets.GCP_HOST }}
-          GCP_USER: ${{ secrets.GCP_USER }}
         run: |
+          if [ -z "$GCP_USER" ]; then
+            echo "ERROR: GCP_USER secret is empty"
+            exit 1
+          fi
+
           ssh \
-            -i ~/.ssh/id_rsa \
-            -o BatchMode=yes \
-            -o ConnectTimeout=15 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=20 \
+            -i ~/.ssh/id_ed25519 \
             "$GCP_USER@$GCP_HOST" \
-            "echo 'SSH connection successful'"
+            "echo 'SSH connection successful' && hostname && whoami"
 
       - name: Deploy Docker App
-        env:
-          GCP_HOST: ${{ secrets.GCP_HOST }}
-          GCP_USER: ${{ secrets.GCP_USER }}
         run: |
           ssh \
-            -i ~/.ssh/id_rsa \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -i ~/.ssh/id_ed25519 \
             "$GCP_USER@$GCP_HOST" << 'EOF'
+              set -e
 
-            set -e
+              APP_DIR="/home/rohit/gcp-user-registration-atlas"
 
-            cd /home/rohit/gcp-user-registration-atlas
+              if [ ! -d "$APP_DIR/.git" ]; then
+                echo "ERROR: Application repository not found at $APP_DIR"
+                exit 1
+              fi
 
-            git fetch origin main
-            git reset --hard origin/main
+              cd "$APP_DIR"
 
-            cd app
+              echo "Fetching latest code..."
+              git fetch origin
+              git reset --hard origin/main
 
-            docker compose up -d --build --remove-orphans
+              cd app
 
-            sleep 15
+              echo "Building and starting Docker containers..."
+              docker compose up -d --build
 
-            curl --fail http://127.0.0.1/api/health
+              echo "Current container status:"
+              docker compose ps
 
-            docker image prune -f
+              echo "Removing unused Docker images..."
+              docker image prune -f
 
-            echo "Deployment successful"
+              echo "Waiting for application startup..."
+              sleep 15
+
+              echo "Running health check..."
+              curl --fail \
+                   --silent \
+                   --show-error \
+                   --retry 5 \
+                   --retry-delay 5 \
+                   http://127.0.0.1/api/health
+
+              echo
+              echo "Deployment completed successfully"
           EOF
